@@ -37,7 +37,7 @@ const jwt = function JSON_web_token (request, secret, alg = 'HS256', hash = 'sha
 
 const ecdsa = (signature, privateKey, hash = 'sha256', digest = 'hex') => {
     const sign = Crypto.createSign (hash);
-    sign.update(signature);
+    sign.update (signature);
     return sign.sign (privateKey, digest);
 }
 

@@ -729,7 +729,7 @@ module.exports = class huobipro extends Exchange {
             // eslint-disable-next-line quotes
             let payload = [ method, this.hostname, url, auth ].join ("\n");
             let signature = this.hmac (this.encode (payload), this.encode (this.secret), 'sha256', 'base64');
-            const privateSignature = this.ecdsa (signature, this.password, 'sha256', 'base64')
+            const privateSignature = this.ecdsa (signature, this.password, 'sha256', 'base64');
             auth += '&' + this.urlencode ({ 'Signature': signature });
             auth += '&' + this.urlencode ({ 'PrivateSignature': privateSignature });
             url += '?' + auth;
