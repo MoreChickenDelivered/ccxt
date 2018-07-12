@@ -22,7 +22,7 @@ class binance (Exchange):
         return self.deep_extend(super(binance, self).describe(), {
             'id': 'binance',
             'name': 'Binance',
-            'countries': 'JP',  # Japan
+            'countries': ['JP'],  # Japan
             'rateLimit': 500,
             # new metainfo interface
             'has': {
@@ -78,6 +78,7 @@ class binance (Exchange):
                 'web': {
                     'get': [
                         'exchange/public/product',
+                        'assetWithdraw/getAllAsset.html',
                     ],
                 },
                 'wapi': {
@@ -85,6 +86,7 @@ class binance (Exchange):
                         'withdraw',
                     ],
                     'get': [
+                        'getAllAsset',
                         'depositHistory',
                         'withdrawHistory',
                         'depositAddress',
@@ -263,7 +265,6 @@ class binance (Exchange):
             'commonCurrencies': {
                 'YOYO': 'YOYOW',
                 'BCC': 'BCH',
-                'NANO': 'XRB',
             },
             # exchange-specific options
             'options': {
@@ -281,8 +282,9 @@ class binance (Exchange):
                 '-1000': ExchangeNotAvailable,  # {"code":-1000,"msg":"An unknown error occured while processing the request."}
                 '-1013': InvalidOrder,  # createOrder -> 'invalid quantity'/'invalid price'/MIN_NOTIONAL
                 '-1021': InvalidNonce,  # 'your time is ahead of server'
+                '-1022': AuthenticationError,  # {"code":-1022,"msg":"Signature for self request is not valid."}
                 '-1100': InvalidOrder,  # createOrder(symbol, 1, asdf) -> 'Illegal characters found in parameter 'price'
-                '-2010': InsufficientFunds,  # createOrder -> 'Account has insufficient balance for requested action.'
+                '-2010': ExchangeError,  # generic error code for createOrder -> 'Account has insufficient balance for requested action.', {"code":-2010,"msg":"Rest API trading is not enabled."}, etc...
                 '-2011': OrderNotFound,  # cancelOrder(1, 'BTC/USDT') -> 'UNKNOWN_ORDER'
                 '-2013': OrderNotFound,  # fetchOrder(1, 'BTC/USDT') -> 'Order does not exist'
                 '-2014': AuthenticationError,  # {"code":-2014, "msg": "API-key format invalid."}
@@ -592,8 +594,6 @@ class binance (Exchange):
                 remaining = max(remaining, 0.0)
             if price is not None:
                 cost = price * filled
-                if self.options['parseOrderToPrecision']:
-                    cost = float(self.cost_to_precision(symbol, cost))
         id = self.safe_string(order, 'orderId')
         type = self.safe_string(order, 'type')
         if type is not None:
@@ -608,12 +608,19 @@ class binance (Exchange):
             trades = self.parse_trades(fills, market)
             numTrades = len(trades)
             if numTrades > 0:
+                cost = trades[0]['cost']
                 fee = {
                     'cost': trades[0]['fee']['cost'],
                     'currency': trades[0]['fee']['currency'],
                 }
                 for i in range(1, len(trades)):
+                    cost = self.sum(cost, trades[i]['cost'])
                     fee['cost'] = self.sum(fee['cost'], trades[i]['fee']['cost'])
+                if cost and filled:
+                    price = cost / filled
+        if cost is not None:
+            if self.options['parseOrderToPrecision']:
+                cost = float(self.cost_to_precision(symbol, cost))
         result = {
             'info': order,
             'id': id,
@@ -681,7 +688,7 @@ class binance (Exchange):
         return self.parse_order(response, market)
 
     async def fetch_order(self, id, symbol=None, params={}):
-        if not symbol:
+        if symbol is None:
             raise ExchangeError(self.id + ' fetchOrder requires a symbol param')
         await self.load_markets()
         market = self.market(symbol)
@@ -697,14 +704,14 @@ class binance (Exchange):
         return self.parse_order(response, market)
 
     async def fetch_orders(self, symbol=None, since=None, limit=None, params={}):
-        if not symbol:
+        if symbol is None:
             raise ExchangeError(self.id + ' fetchOrders requires a symbol param')
         await self.load_markets()
         market = self.market(symbol)
         request = {
             'symbol': market['id'],
         }
-        if limit:
+        if limit is not None:
             request['limit'] = limit
         response = await self.privateGetAllOrders(self.extend(request, params))
         return self.parse_orders(response, market, since, limit)
@@ -729,7 +736,7 @@ class binance (Exchange):
         return self.filter_by(orders, 'status', 'closed')
 
     async def cancel_order(self, id, symbol=None, params={}):
-        if not symbol:
+        if symbol is None:
             raise ExchangeError(self.id + ' cancelOrder requires a symbol argument')
         await self.load_markets()
         market = self.market(symbol)
@@ -741,14 +748,14 @@ class binance (Exchange):
         return self.parse_order(response)
 
     async def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
-        if not symbol:
+        if symbol is None:
             raise ExchangeError(self.id + ' fetchMyTrades requires a symbol argument')
         await self.load_markets()
         market = self.market(symbol)
         request = {
             'symbol': market['id'],
         }
-        if limit:
+        if limit is not None:
             request['limit'] = limit
         response = await self.privateGetMyTrades(self.extend(request, params))
         return self.parse_trades(response, market, since, limit)
@@ -882,6 +889,10 @@ class binance (Exchange):
                         message = self.safe_string(response, 'msg')
                         if message == 'Order would trigger immediately.':
                             raise InvalidOrder(self.id + ' ' + body)
+                        elif message == 'Account has insufficient balance for requested action.':
+                            raise InsufficientFunds(self.id + ' ' + body)
+                        elif message == 'Rest API trading is not enabled.':
+                            raise ExchangeNotAvailable(self.id + ' ' + body)
                         raise exceptions[error](self.id + ' ' + body)
                     else:
                         raise ExchangeError(self.id + ': unknown error code: ' + body + ' ' + error)

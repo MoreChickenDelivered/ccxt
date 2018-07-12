@@ -12,7 +12,7 @@ module.exports = class gateio extends Exchange {
         return this.deepExtend (super.describe (), {
             'id': 'gateio',
             'name': 'Gate.io',
-            'countries': 'CN',
+            'countries': [ 'CN' ],
             'version': '2',
             'rateLimit': 1000,
             'has': {
@@ -326,6 +326,8 @@ module.exports = class gateio extends Exchange {
         let id = this.safeString (trade, 'tradeID');
         id = this.safeString (trade, 'id', id);
         let orderId = this.safeString (trade, 'orderid');
+        if (typeof orderId !== 'undefined')
+            orderId = this.safeString (trade, 'orderNumber');
         let price = this.safeFloat (trade, 'rate');
         let amount = this.safeFloat (trade, 'amount');
         let cost = undefined;
@@ -479,7 +481,7 @@ module.exports = class gateio extends Exchange {
         if ((typeof address !== 'undefined') && (address.indexOf ('address') >= 0))
             throw new InvalidAddress (this.id + ' queryDepositAddress ' + address);
         if (code === 'XRP') {
-            let parts = address.split ('/', 2);
+            let parts = address.split (' ');
             address = parts[0];
             tag = parts[1];
         }

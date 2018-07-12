@@ -28,7 +28,7 @@ class gateio (Exchange):
         return self.deep_extend(super(gateio, self).describe(), {
             'id': 'gateio',
             'name': 'Gate.io',
-            'countries': 'CN',
+            'countries': ['CN'],
             'version': '2',
             'rateLimit': 1000,
             'has': {
@@ -320,6 +320,8 @@ class gateio (Exchange):
         id = self.safe_string(trade, 'tradeID')
         id = self.safe_string(trade, 'id', id)
         orderId = self.safe_string(trade, 'orderid')
+        if orderId is not None:
+            orderId = self.safe_string(trade, 'orderNumber')
         price = self.safe_float(trade, 'rate')
         amount = self.safe_float(trade, 'amount')
         cost = None
@@ -458,7 +460,7 @@ class gateio (Exchange):
         if (address is not None) and(address.find('address') >= 0):
             raise InvalidAddress(self.id + ' queryDepositAddress ' + address)
         if code == 'XRP':
-            parts = address.split('/', 2)
+            parts = address.split(' ')
             address = parts[0]
             tag = parts[1]
         return {

@@ -12,7 +12,7 @@ module.exports = class kraken extends Exchange {
         return this.deepExtend (super.describe (), {
             'id': 'kraken',
             'name': 'Kraken',
-            'countries': 'US',
+            'countries': [ 'US' ],
             'version': '0',
             'rateLimit': 3000,
             'has': {
@@ -306,7 +306,8 @@ module.exports = class kraken extends Exchange {
         return result;
     }
 
-    appendInactiveMarkets (result = []) {
+    appendInactiveMarkets (result) {
+        // result should be an array to append to
         let precision = { 'amount': 8, 'price': 8 };
         let costLimits = { 'min': 0, 'max': undefined };
         let priceLimits = { 'min': Math.pow (10, -precision['price']), 'max': undefined };

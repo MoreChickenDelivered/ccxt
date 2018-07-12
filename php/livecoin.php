@@ -86,12 +86,18 @@ class livecoin extends Exchange {
                 ),
             ),
             'commonCurrencies' => array (
-                'CPC' => 'Capricoin',
+                'BTCH' => 'Bithash',
+                'CPC' => 'CapriCoin',
                 'CRC' => 'CryCash',
+                'EDR' => 'E-Dinar Coin', // conflicts with EDR for Endor Protocol and EDRCoin
+                'eETT' => 'EETT',
+                'FirstBlood' => '1ST',
+                'FORTYTWO' => '42',
                 'ORE' => 'Orectic',
                 'RUR' => 'RUB',
                 'SCT' => 'SpaceCoin',
                 'TPI' => 'ThaneCoin',
+                'wETT' => 'WETT',
                 'XBT' => 'Bricktox',
             ),
             'exceptions' => array (
@@ -213,7 +219,7 @@ class livecoin extends Exchange {
         return $result;
     }
 
-    public function append_fiat_currencies ($result = []) {
+    public function append_fiat_currencies ($result) {
         $precision = 8;
         $defaults = array (
             'info' => null,
@@ -546,7 +552,7 @@ class livecoin extends Exchange {
     }
 
     public function cancel_order ($id, $symbol = null, $params = array ()) {
-        if (!$symbol)
+        if ($symbol === null)
             throw new ExchangeError ($this->id . ' cancelOrder requires a $symbol argument');
         $this->load_markets();
         $market = $this->market ($symbol);
@@ -656,9 +662,17 @@ class livecoin extends Exchange {
             // returns status $code 200 even if $success === false
             $success = $this->safe_value($response, 'success', true);
             if (!$success) {
-                $message = $this->safe_string($response, 'message', '');
-                if (mb_strpos ($message, 'Cannot find order') !== false) {
-                    throw new OrderNotFound ($this->id . ' ' . $body);
+                $message = $this->safe_string($response, 'message');
+                if ($message !== null) {
+                    if (mb_strpos ($message, 'Cannot find order') !== false) {
+                        throw new OrderNotFound ($this->id . ' ' . $body);
+                    }
+                }
+                $exception = $this->safe_string($response, 'exception');
+                if ($exception !== null) {
+                    if (mb_strpos ($exception, 'Minimal amount is') !== false) {
+                        throw new InvalidOrder ($this->id . ' ' . $body);
+                    }
                 }
                 throw new ExchangeError ($this->id . ' ' . $body);
             }

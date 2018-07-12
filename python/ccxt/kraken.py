@@ -32,7 +32,7 @@ class kraken (Exchange):
         return self.deep_extend(super(kraken, self).describe(), {
             'id': 'kraken',
             'name': 'Kraken',
-            'countries': 'US',
+            'countries': ['US'],
             'version': '0',
             'rateLimit': 3000,
             'has': {
@@ -316,7 +316,8 @@ class kraken (Exchange):
         self.marketsByAltname = self.index_by(result, 'altname')
         return result
 
-    def append_inactive_markets(self, result=[]):
+    def append_inactive_markets(self, result):
+        # result should be an array to append to
         precision = {'amount': 8, 'price': 8}
         costLimits = {'min': 0, 'max': None}
         priceLimits = {'min': math.pow(10, -precision['price']), 'max': None}

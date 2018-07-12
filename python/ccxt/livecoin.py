@@ -103,12 +103,18 @@ class livecoin (Exchange):
                 },
             },
             'commonCurrencies': {
-                'CPC': 'Capricoin',
+                'BTCH': 'Bithash',
+                'CPC': 'CapriCoin',
                 'CRC': 'CryCash',
+                'EDR': 'E-Dinar Coin',  # conflicts with EDR for Endor Protocol and EDRCoin
+                'eETT': 'EETT',
+                'FirstBlood': '1ST',
+                'FORTYTWO': '42',
                 'ORE': 'Orectic',
                 'RUR': 'RUB',
                 'SCT': 'SpaceCoin',
                 'TPI': 'ThaneCoin',
+                'wETT': 'WETT',
                 'XBT': 'Bricktox',
             },
             'exceptions': {
@@ -224,7 +230,7 @@ class livecoin (Exchange):
         result = self.append_fiat_currencies(result)
         return result
 
-    def append_fiat_currencies(self, result=[]):
+    def append_fiat_currencies(self, result):
         precision = 8
         defaults = {
             'info': None,
@@ -525,7 +531,7 @@ class livecoin (Exchange):
         return result
 
     def cancel_order(self, id, symbol=None, params={}):
-        if not symbol:
+        if symbol is None:
             raise ExchangeError(self.id + ' cancelOrder requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
@@ -622,7 +628,12 @@ class livecoin (Exchange):
             # returns status code 200 even if success == False
             success = self.safe_value(response, 'success', True)
             if not success:
-                message = self.safe_string(response, 'message', '')
-                if message.find('Cannot find order') >= 0:
-                    raise OrderNotFound(self.id + ' ' + body)
+                message = self.safe_string(response, 'message')
+                if message is not None:
+                    if message.find('Cannot find order') >= 0:
+                        raise OrderNotFound(self.id + ' ' + body)
+                exception = self.safe_string(response, 'exception')
+                if exception is not None:
+                    if exception.find('Minimal amount is') >= 0:
+                        raise InvalidOrder(self.id + ' ' + body)
                 raise ExchangeError(self.id + ' ' + body)

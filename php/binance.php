@@ -13,7 +13,7 @@ class binance extends Exchange {
         return array_replace_recursive (parent::describe (), array (
             'id' => 'binance',
             'name' => 'Binance',
-            'countries' => 'JP', // Japan
+            'countries' => array ( 'JP' ), // Japan
             'rateLimit' => 500,
             // new metainfo interface
             'has' => array (
@@ -69,6 +69,7 @@ class binance extends Exchange {
                 'web' => array (
                     'get' => array (
                         'exchange/public/product',
+                        'assetWithdraw/getAllAsset.html',
                     ),
                 ),
                 'wapi' => array (
@@ -76,6 +77,7 @@ class binance extends Exchange {
                         'withdraw',
                     ),
                     'get' => array (
+                        'getAllAsset',
                         'depositHistory',
                         'withdrawHistory',
                         'depositAddress',
@@ -254,7 +256,6 @@ class binance extends Exchange {
             'commonCurrencies' => array (
                 'YOYO' => 'YOYOW',
                 'BCC' => 'BCH',
-                'NANO' => 'XRB',
             ),
             // exchange-specific options
             'options' => array (
@@ -272,8 +273,9 @@ class binance extends Exchange {
                 '-1000' => '\\ccxt\\ExchangeNotAvailable', // array ("code":-1000,"msg":"An unknown error occured while processing the request.")
                 '-1013' => '\\ccxt\\InvalidOrder', // createOrder -> 'invalid quantity'/'invalid price'/MIN_NOTIONAL
                 '-1021' => '\\ccxt\\InvalidNonce', // 'your time is ahead of server'
+                '-1022' => '\\ccxt\\AuthenticationError', // array ("code":-1022,"msg":"Signature for this request is not valid.")
                 '-1100' => '\\ccxt\\InvalidOrder', // createOrder(symbol, 1, asdf) -> 'Illegal characters found in parameter 'price'
-                '-2010' => '\\ccxt\\InsufficientFunds', // createOrder -> 'Account has insufficient balance for requested action.'
+                '-2010' => '\\ccxt\\ExchangeError', // generic error code for createOrder -> 'Account has insufficient balance for requested action.', array ("code":-2010,"msg":"Rest API trading is not enabled."), etc...
                 '-2011' => '\\ccxt\\OrderNotFound', // cancelOrder(1, 'BTC/USDT') -> 'UNKNOWN_ORDER'
                 '-2013' => '\\ccxt\\OrderNotFound', // fetchOrder (1, 'BTC/USDT') -> 'Order does not exist'
                 '-2014' => '\\ccxt\\AuthenticationError', // array ( "code":-2014, "msg" => "API-key format invalid." )
@@ -612,9 +614,6 @@ class binance extends Exchange {
             }
             if ($price !== null) {
                 $cost = $price * $filled;
-                if ($this->options['parseOrderToPrecision']) {
-                    $cost = floatval ($this->cost_to_precision($symbol, $cost));
-                }
             }
         }
         $id = $this->safe_string($order, 'orderId');
@@ -631,13 +630,22 @@ class binance extends Exchange {
             $trades = $this->parse_trades($fills, $market);
             $numTrades = is_array ($trades) ? count ($trades) : 0;
             if ($numTrades > 0) {
+                $cost = $trades[0]['cost'];
                 $fee = array (
                     'cost' => $trades[0]['fee']['cost'],
                     'currency' => $trades[0]['fee']['currency'],
                 );
                 for ($i = 1; $i < count ($trades); $i++) {
+                    $cost = $this->sum ($cost, $trades[$i]['cost']);
                     $fee['cost'] = $this->sum ($fee['cost'], $trades[$i]['fee']['cost']);
                 }
+                if ($cost && $filled)
+                    $price = $cost / $filled;
+            }
+        }
+        if ($cost !== null) {
+            if ($this->options['parseOrderToPrecision']) {
+                $cost = floatval ($this->cost_to_precision($symbol, $cost));
             }
         }
         $result = array (
@@ -715,7 +723,7 @@ class binance extends Exchange {
     }
 
     public function fetch_order ($id, $symbol = null, $params = array ()) {
-        if (!$symbol)
+        if ($symbol === null)
             throw new ExchangeError ($this->id . ' fetchOrder requires a $symbol param');
         $this->load_markets();
         $market = $this->market ($symbol);
@@ -732,14 +740,14 @@ class binance extends Exchange {
     }
 
     public function fetch_orders ($symbol = null, $since = null, $limit = null, $params = array ()) {
-        if (!$symbol)
+        if ($symbol === null)
             throw new ExchangeError ($this->id . ' fetchOrders requires a $symbol param');
         $this->load_markets();
         $market = $this->market ($symbol);
         $request = array (
             'symbol' => $market['id'],
         );
-        if ($limit)
+        if ($limit !== null)
             $request['limit'] = $limit;
         $response = $this->privateGetAllOrders (array_merge ($request, $params));
         return $this->parse_orders($response, $market, $since, $limit);
@@ -768,7 +776,7 @@ class binance extends Exchange {
     }
 
     public function cancel_order ($id, $symbol = null, $params = array ()) {
-        if (!$symbol)
+        if ($symbol === null)
             throw new ExchangeError ($this->id . ' cancelOrder requires a $symbol argument');
         $this->load_markets();
         $market = $this->market ($symbol);
@@ -781,14 +789,14 @@ class binance extends Exchange {
     }
 
     public function fetch_my_trades ($symbol = null, $since = null, $limit = null, $params = array ()) {
-        if (!$symbol)
+        if ($symbol === null)
             throw new ExchangeError ($this->id . ' fetchMyTrades requires a $symbol argument');
         $this->load_markets();
         $market = $this->market ($symbol);
         $request = array (
             'symbol' => $market['id'],
         );
-        if ($limit)
+        if ($limit !== null)
             $request['limit'] = $limit;
         $response = $this->privateGetMyTrades (array_merge ($request, $params));
         return $this->parse_trades($response, $market, $since, $limit);
@@ -934,8 +942,13 @@ class binance extends Exchange {
                             throw new DDoSProtection ($this->id . ' temporary banned => ' . $body);
                         }
                         $message = $this->safe_string($response, 'msg');
-                        if ($message === 'Order would trigger immediately.')
+                        if ($message === 'Order would trigger immediately.') {
                             throw new InvalidOrder ($this->id . ' ' . $body);
+                        } else if ($message === 'Account has insufficient balance for requested action.') {
+                            throw new InsufficientFunds ($this->id . ' ' . $body);
+                        } else if ($message === 'Rest API trading is not enabled.') {
+                            throw new ExchangeNotAvailable ($this->id . ' ' . $body);
+                        }
                         throw new $exceptions[$error] ($this->id . ' ' . $body);
                     } else {
                         throw new ExchangeError ($this->id . ' => unknown $error $code => ' . $body . ' ' . $error);
