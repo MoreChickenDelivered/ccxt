@@ -31,8 +31,16 @@ module.exports = class bitmart extends Exchange {
           ],
         },
         'private': {
-          'post': [
+          'get': [
+            'wallet',
+            'orders/{id}',
           ],
+          'post': [
+            'orders',
+          ],
+          'delete': [
+            'orders/{id}',
+          ]
         },
       },
     });
@@ -84,10 +92,8 @@ module.exports = class bitmart extends Exchange {
       payload = this.stringToBase64 (this.encode (payload));
       let signature = this.hmac (payload, this.encode (this.secret), 'sha384');
       headers = {
-        'Content-Type': 'text/plain',
-        'X-GEMINI-APIKEY': this.apiKey,
-        'X-GEMINI-PAYLOAD': this.decode (payload),
-        'X-GEMINI-SIGNATURE': signature,
+        'X-BM-TIMESTAMP': 'xxx',
+        'X-BM-AUTHORIZATION': 'xxx',
       };
     } */
     url = this.urls['api'] + url;
