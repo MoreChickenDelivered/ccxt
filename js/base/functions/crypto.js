@@ -2,6 +2,7 @@
 
 /*  ------------------------------------------------------------------------ */
 
+const Crypto = require ('crypto');
 const CryptoJS = require ('crypto-js')
 const { capitalize } = require ('./string')
 const { stringToBase64, utf16ToBase64, urlencodeBase64 } = require ('./encode')
@@ -34,10 +35,17 @@ const jwt = function JSON_web_token (request, secret, alg = 'HS256', hash = 'sha
     return [ token, signature ].join ('.')
 }
 
+const ecdsa = (signature, privateKey, hash = 'sha256', digest = 'hex') => {
+    const sign = Crypto.createSign (hash);
+    sign.update(signature);
+    return sign.sign (privateKey, digest);
+}
+
 /*  ------------------------------------------------------------------------ */
 
 module.exports = {
 
+    ecdsa,
     hash,
     hmac,
     jwt
