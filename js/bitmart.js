@@ -3,7 +3,7 @@
 //  ---------------------------------------------------------------------------
 
 const Exchange = require ('./base/Exchange');
-const { ExchangeError, OrderNotFound } = require ('./base/errors');
+const { ExchangeError, OrderNotFound, NetworkError } = require ('./base/errors');
 const NodeRSA = require('node-rsa');
 
 //  ---------------------------------------------------------------------------
@@ -54,6 +54,46 @@ module.exports = class bitmart extends Exchange {
             'privateKey': null,
             'token': null,
             'timestamp': null,
+            'fees': {
+                'trading': {
+                    'tierBased': false,
+                    'percentage': true,
+                    'maker': 0.05,
+                    'taker': 0.05,
+                },
+                'funding': {
+                    'tierBased': false,
+                    'percentage': false,
+                    'withdraw': {
+                        'BTC': 0.0005,
+                        'ETH': 0.01,
+                        'BMX': 10,
+                        'XLM': 0.001,
+                        'MOBI': 0.001,
+                        'EOS': 0.2,
+                        'VEN': 1,
+                        'ABT': 1,
+                        'KAN': 15,
+                        'OMG': 0.1,
+                        'AISI': 0,
+                        'ZRX': 3,
+                        'IOST': 100,
+                        'NEO': 0,
+                        'EFX': 0,
+                        'XRR': 10,
+                        'ONT': 0.1,
+                        'ZIL': 10,
+                        'MKR': 0.005,
+                        'GNT': 5,
+                        'AE': 1,
+                        'RHOC': 2,
+                        'BTM': 5,
+                        'BBK': 10,
+                        'HYDRO': 500,
+                        'DPST': 10,
+                    },
+                },
+            },
         });
     }
 
@@ -157,7 +197,7 @@ module.exports = class bitmart extends Exchange {
             'price': price,
             'side': side,
         };
-        let response = await this.privatePostOrders(this.extend(order, params));
+        let response = await this.privatePostOrders (this.extend(order, params));
         return {
             'info': response,
             'id': response['entrust_id'],
@@ -168,9 +208,12 @@ module.exports = class bitmart extends Exchange {
         await this.getToken ();
         await this.loadMarkets ();
         try {
-            return await this.privateDeleteOrdersId({'id': id});
+            return await this.privateDeleteOrdersId ({'id': id});
         } catch (err) {
-            throw new OrderNotFound({message: 'Order Not Found'});
+            if (err.message.includes ('500')) {
+                throw new NetworkError ('Network Error');
+            }
+            throw new OrderNotFound ('Order Not Found');
         }
     }
 
@@ -226,6 +269,5 @@ module.exports = class bitmart extends Exchange {
         let res = await this.privatePostToken (tokenRequest);
         this.timestamp = new Date ();
         this.token = res.access_token;
-        return;
     }
 };
