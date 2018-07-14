@@ -35,12 +35,14 @@ module.exports = class bitmart extends Exchange {
                     'get': [
                         'symbols',
                         'symbols/{pair}/orders',
+                        'symbols/{pair}/trades',
                     ],
                 },
                 'private': {
                     'get': [
                         'wallet',
                         'orders/{id}',
+                        'orders'
                     ],
                     'post': [
                         'token',
@@ -126,6 +128,54 @@ module.exports = class bitmart extends Exchange {
         return this.parseOrderBook (orderbook, undefined, 'buys', 'sells', 'price', 'amount');
     }
 
+    parseTrade (trade, market = undefined) {
+        let amount = this.safeFloat(trade, 'original_amount');
+        let price = this.safeFloat (trade, 'price');
+        let fee = this.safeFloat(trade, 'fees');
+        let symbol = market['symbol'];
+
+        return {
+            'id': trade['entrust_id'],
+            'order': trade['entrust_id'],
+            'info': trade,
+            'timestamp': trade['timestamp'],
+            'datetime': this.iso8601 (trade['timestamp']),
+            'symbol': symbol,
+            'type': undefined,
+            'side': trade['side'],
+            'price': price,
+            'cost': price * amount,
+            'amount': amount,
+            'fee': fee,
+        };
+    }
+
+    async fetchTrades (symbol = undefined, since = undefined, limit = undefined, params = {}) {
+        await this.loadMarkets ();
+        if (symbol === undefined) {
+            throw new ExchangeError ('undefined symbol');
+        }
+        let response = await this.publicGetSymbolsPairTrades (this.extend ({
+            'pair': this.marketId (symbol),
+        }, params));
+        // fetchTrades response is unlike fetchMyTrades response
+        return response;
+    }
+
+    async fetchMyTrades (symbol = undefined, since = undefined, limit = undefined, params = {}) {
+        await this.getToken();
+        await this.loadMarkets ();
+        let request = {
+            'symbol': this.marketId(symbol),
+            'status': 0,
+            'offset': 0,
+            'limit': 100,
+        };
+        let market = this.market (symbol);
+        let response = await this.privateGetOrders (this.extend (request, params));
+        return await this.parseTrades (response.orders, market, since, limit);
+    }
+
     async fetchBalance (params = {}) {
         await this.getToken ();
         await this.loadMarkets ();
@@ -154,18 +204,28 @@ module.exports = class bitmart extends Exchange {
         return this.parseOrder (response);
     }
 
-    async parseOrder (order) {
+    async parseOrder (order, market = undefined) {
         let amount = this.safeFloat(order, 'original_amount');
         let remaining = this.safeFloat (order, 'remaining_amount');
         let filled = this.safeFloat (order, 'executed_amount');
         let price = this.safeFloat (order, 'price');
         let fee = this.safeFloat(order, 'fees');
+        let symbol = undefined;
         let status = 'open';
         if (order['status'] === 3) {
             status = 'closed';
         }
         else if (order['status'] === 4) {
             status = 'canceled';
+        }
+        if (typeof market === 'undefined') {
+            let marketId = this.safeString (order, 'symbol');
+            if (marketId in this.markets_by_id) {
+                market = this.markets_by_id[marketId];
+            }
+        }
+        if (typeof market !== 'undefined') {
+            symbol = market['symbol'];
         }
         return {
             'id': order['entrust_id'],
@@ -174,8 +234,8 @@ module.exports = class bitmart extends Exchange {
             'datetime': this.iso8601 (order['timestamp']),
             'lastTradeTimestamp': undefined,
             'status': status,
-            'symbol': order['symbol'],
-            'type': 'limit',
+            'symbol': symbol,
+            'type': undefined,
             'side': order['side'],
             'price': price,
             'cost': price * filled,
@@ -237,6 +297,9 @@ module.exports = class bitmart extends Exchange {
                 };
                 if (method === 'POST') {
                     body = this.json(query);
+                } else {
+                    if (Object.keys (query).length)
+                        url += '?' + this.urlencode (query);
                 }
             }
         }
@@ -257,7 +320,7 @@ module.exports = class bitmart extends Exchange {
         if (this.timestamp && this.token) {
             let previous = this.timestamp.getTime() / 1000;
             let now = new Date ().getTime() / 1000;
-            if (now - previous < 896) {
+            if (now - previous < 860) {
                 return this.token;
             }
         }
